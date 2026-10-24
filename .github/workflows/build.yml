@@ -1,0 +1,75 @@
+name: Windows checks and complete release
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Test isolated functionality
+        run: python -m pytest -q
+      - name: Build portable app
+        run: python scripts/build.py
+      - name: Build standalone installer
+        run: python scripts/build_installer.py
+      - name: Test bundled executable
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath 'dist/TraeCNManager/TraeCNManager.exe' -ArgumentList '--self-test' -PassThru -Wait -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw 'Bundled self-test failed' }
+      - name: Install from setup EXE alone and test installed app
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist/TraeCNManager-*-Setup-x64.exe | Select-Object -First 1).FullName
+          $target = Join-Path $env:RUNNER_TEMP 'tcn-installed'
+          $p = Start-Process -FilePath $setup -ArgumentList @('--silent', '--no-shortcut', '--install-dir', ('"' + $target + '"')) -PassThru -Wait -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw 'Standalone installation failed' }
+          $p = Start-Process -FilePath (Join-Path $target 'TraeCNManager.exe') -ArgumentList '--self-test' -PassThru -Wait -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw 'Installed app self-test failed' }
+      - name: Archive portable app
+        shell: pwsh
+        run: Compress-Archive -Path dist/TraeCNManager -DestinationPath dist/TraeCNManager-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TraeCNManager-windows-x64
+          path: |
+            dist/TraeCNManager-windows-x64.zip
+            dist/TraeCNManager-*-Setup-x64.exe
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: TraeCNManager-windows-x64
+          path: release
+      - name: Publish tagged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already published; keeping its verified assets.'
+          else
+            gh release create "$RELEASE_TAG" release/*.zip release/*.exe --generate-notes
+          fi

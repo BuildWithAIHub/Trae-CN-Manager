@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
@@ -272,8 +273,13 @@ def test_compatibility_checks_schema_markers_and_version(tmp_path, native_versio
     (resources / "out" / "main.js").write_text(marker_source, encoding="utf-8")
     client = TraeClient(executable)
     assert client._compatibility()["state"] == "baseline"
+    previous_product_stat = product_path.stat()
     product["appVersion"] = "3.4.4"
     product_path.write_text(json.dumps(product), encoding="utf-8")
+    # A real client upgrade changes the public metadata stamp. Fast Windows
+    # filesystems can give same-size fixture rewrites the same timestamp.
+    os.utime(product_path, ns=(previous_product_stat.st_atime_ns,
+                              previous_product_stat.st_mtime_ns + 1_000_000_000))
     assert client._compatibility()["state"] == "unverified"
     product["appVersion"] = native_version
     product_path.write_text(json.dumps(product), encoding="utf-8")

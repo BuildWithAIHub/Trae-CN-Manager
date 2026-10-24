@@ -65,7 +65,7 @@ class Session:
 class ConfigTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="trae-config-tests-")
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.manager = ConfigManager(self.root / "global", self.root / "backups")
         self.mcp = self.manager.mcp_path(profile=self.root / "profile")
 

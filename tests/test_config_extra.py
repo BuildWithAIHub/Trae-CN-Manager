@@ -58,7 +58,7 @@ class Session:
 class ConfigExtraTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="trae-config-v2-tests-")
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.manager = ConfigManager(self.root / "global", self.root / "backups")
         self.native = self.manager.global_home / "skills"
         self.mcp = self.root / "profile" / "User" / "mcp.json"
